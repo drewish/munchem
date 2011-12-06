@@ -9,15 +9,15 @@
 // Import the interfaces
 #import "HelloWorldLayer.h"
 
-int count = 50;
-NSMutableArray *edible;
+int count = 25;
+NSMutableArray *edible, *eaten;
 CCSprite *eater;
 CCLabelTTF *label;
 
 // HelloWorldLayer implementation
 @implementation HelloWorldLayer
 
-@synthesize distance;
+@synthesize score;
 
 +(CCScene *) scene
 {
@@ -29,7 +29,7 @@ CCLabelTTF *label;
 	
 	// add layer as a child to scene
 	[scene addChild: layer];
-	
+
 	// return the scene
 	return scene;
 }
@@ -42,30 +42,36 @@ CCLabelTTF *label;
 	if( (self=[super init])) {
 		// ask director the the window size
 		CGSize size = [[CCDirector sharedDirector] winSize];
-        
-        self.distance = 0;
-                
+           
         edible = [[NSMutableArray alloc] initWithCapacity: count];
+        eaten = [[NSMutableArray alloc] initWithCapacity: count];
         for (int i = 0; i < count; i++) {
             CCSprite *p = [CCSprite spriteWithFile: @"Icon-Small.png"];
-            p.position = ccp(
-                (arc4random() % ((int) size.width - 50)) + 25,
-                (arc4random() % ((int) size.height - 50)) + 25
-            );
+            [p setVisible: FALSE];
             [self addChild: p];
             [edible addObject: p];
         }
         
         eater = [CCSprite spriteWithFile: @"Icon.png"];
-        eater.position = ccp(50, 50);
         [self addChild: eater];
         
-		label = [CCLabelTTF labelWithString:@"Go munch 'em!" dimensions:CGSizeMake(size.width,50) alignment:CCTextAlignmentLeft fontName:@"Marker Felt" fontSize:32];
-		label.position = ccp(size.width/2, size.height/2);
-		[self addChild: label];
+		label = [CCLabelTTF labelWithString:@"Go munch 'em!" dimensions:CGSizeMake(size.width, 50) alignment:CCTextAlignmentLeft fontName:@"Marker Felt" fontSize:32];
+		label.position = ccp(size.width / 2, size.height - 50);
+		[self addChild: label z: 1];
+         
+        CCMenuItemFont *item = [CCMenuItemFont itemFromString: @"Restart" target: self selector: @selector(setupGame)];
+		[item setFontSize: 20];
+		[item setFontName: @"Marker Felt"];
+		CCMenu *menu = [CCMenu menuWithItems:item, nil];
+// @TODO Figure out the right way to position these.
+		menu.position = CGPointZero;
+		item.position = ccp(size.width - 50, size.height - 50);
+		[self addChild: menu z: 1];	
         
         self.isTouchEnabled = YES;
 
+        [self setupGame];
+        
         [self scheduleUpdate];
 	}
 	return self;
@@ -75,11 +81,31 @@ CCLabelTTF *label;
 - (void) dealloc
 {
     [edible release];
+    [eaten release];
     
 	// don't forget to call "super dealloc"
 	[super dealloc];
 }
 
+-(void) setupGame
+{
+    // ask director the the window size
+    CGSize size = [[CCDirector sharedDirector] winSize];
+
+    // Put everything back into edible the reposition it.
+    [edible addObjectsFromArray: eaten];
+    [eaten removeAllObjects];
+    [edible enumerateObjectsUsingBlock:^(id s, NSUInteger idx, BOOL *stop) {
+        [s setVisible: FALSE];
+        [s setPosition: ccp(arc4random_uniform((int) size.width - 50) + 25, arc4random_uniform((int) size.height - 50) + 25)];
+        [s setVisible: TRUE];
+    }];
+    
+    [eater setPosition: ccp(size.width / 2, size.height / 2)];
+    
+    score = 0;
+}
+                                
 -(void) update:(ccTime) dt
 {
     NSString *str;
@@ -88,7 +114,7 @@ CCLabelTTF *label;
         str = @"Good Job!";
     }
     else {
-        str = [NSString stringWithFormat:@"%4d", distance];
+        str = [NSString stringWithFormat:@"%4d", [self score]];
     }
     [label setString:str];        
 }
@@ -114,32 +140,44 @@ CCLabelTTF *label;
     
     int d = ccpDistance(location, eater.position);
     
-    ccTime moveDuration = 0.3;
-    __block ccTime chewAt = moveDuration;
     // Then find what's going into our mouth.
-    NSMutableArray *mouthful = [[NSMutableArray alloc] init]; 
+    NSMutableArray *mouthful = [NSMutableArray array]; 
     [edible enumerateObjectsUsingBlock:^(id s, NSUInteger idx, BOOL *stop) {
         int w = [s boundingBox].size.width,
             h = [s boundingBox].size.height;
         CGRect piece = CGRectMake([s position].x - w / 2, [s position].y - h / 2, w, h);
         if (CGRectIntersectsRect(bite, piece)) {
             [mouthful addObject: s];
-            chewAt = chewAt + 0.01;
-            [self runAction: [CCSequence actions: 
-                              [CCDelayTime actionWithDuration: chewAt], 
-                              [CCCallBlock actionWithBlock:^{ [s removeFromParentAndCleanup:YES]; }], 
-                              nil]];
         }
     }];
 
-    // Now move them from edible to eaten.
-    [edible removeObjectsInArray: mouthful];
-
-    // TODO: we should have it do a "chomping" animation if it eats something.
-    [eater runAction: [CCMoveTo actionWithDuration: moveDuration position: location]];
-    [self runAction: [CCActionTween actionWithDuration: moveDuration key: @"distance" from: distance to: (d + distance)]];
+    ccTime moveDuration = 0.3;
+    int points = [mouthful count] * 50;
     
-    [mouthful release];
+    // TODO: we should have it do a "chomping" animation if it eats something.
+    NSMutableArray *eaterActions = [NSMutableArray arrayWithObject: [CCMoveTo actionWithDuration: moveDuration position: location]];
+    if ([mouthful count] > 0) {
+        [eaterActions addObject: [CCRotateTo actionWithDuration: 0.02 angle: 20.0]];
+
+        NSMutableArray *mouthfulActions = [NSMutableArray arrayWithObject: [CCDelayTime actionWithDuration: moveDuration]];
+        [mouthful enumerateObjectsUsingBlock:^(id s, NSUInteger idx, BOOL *stop) {
+            // Swing back and forth while we eat it...
+            [eaterActions addObject: [CCRotateTo actionWithDuration: 0.02 angle: -20.0]];
+            [eaterActions addObject: [CCRotateTo actionWithDuration: 0.02 angle: 20.0]];
+            // ...and have it disappear
+            [mouthfulActions addObject: [CCDelayTime actionWithDuration: 0.04]];
+            [mouthfulActions addObject: [CCCallBlock actionWithBlock:^{ [s setVisible: FALSE]; }]];
+        }];
+        [self runAction: [CCSequence actionsWithArray: [NSArray arrayWithArray: mouthfulActions]]];
+        
+        [eaterActions addObject: [CCRotateTo actionWithDuration: 0.02 angle: 0]];
+        
+        [edible removeObjectsInArray: mouthful];
+        [eaten addObjectsFromArray: mouthful];
+    }
+    [eater runAction: [CCSequence actionsWithArray: [NSArray arrayWithArray: eaterActions]]];
+    
+    [self runAction: [CCActionTween actionWithDuration: moveDuration key: @"score" from: score to: (score - d + points)]];
 }
 
 @end

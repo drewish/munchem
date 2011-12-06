@@ -13,12 +13,14 @@
 // HelloWorldLayer
 @interface HelloWorldLayer : CCLayer
 {
-    unsigned int distance;
+//    int score;
 }
 
-@property unsigned int distance;
+@property int score;
 
 // returns a CCScene that contains the HelloWorldLayer as the only child
 +(CCScene *) scene;
+
+- (void) setupGame;
 
 @end
