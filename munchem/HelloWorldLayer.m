@@ -59,7 +59,7 @@ CCLabelTTF *label;
 		label.position = ccp(size.width / 2, size.height - 50);
 		[self addChild: label z: 1];
          
-        CCMenuItemFont *item = [CCMenuItemFont itemFromString: @"Restart" target: self selector: @selector(setupGame)];
+        CCMenuItemFont *item = [CCMenuItemFont itemFromString: @"Again!" target: self selector: @selector(setupGame)];
 		[item setFontSize: 20];
 		[item setFontName: @"Marker Felt"];
 		CCMenu *menu = [CCMenu menuWithItems:item, nil];
@@ -108,17 +108,9 @@ CCLabelTTF *label;
                                 
 -(void) update:(ccTime) dt
 {
-    NSString *str;
-    
-    if ([edible count] == 0) {
-        str = @"Good Job!";
-    }
-    else {
-        str = [NSString stringWithFormat:@"%4d", [self score]];
-    }
-    [label setString:str];        
+    NSString *format = ([edible count] == 0) ? @"%4d Good Job!" : @"%4d";
+    [label setString: [NSString stringWithFormat: format, [self score]]];        
 }
-
 
 -(void) registerWithTouchDispatcher
 {
@@ -133,16 +125,22 @@ CCLabelTTF *label;
 	// Figure out our destination...
     CGPoint location = [self convertTouchToNodeSpace: touch];
         
+    NSArray *mouthful = [self biteAt: location];
+    [self chewPieces: mouthful at: location];
+}
+     
+- (NSArray*) biteAt: (CGPoint) location {
     // ...and how big of a bite we take.
     int width = [eater boundingBox].size.width,
-        height = [eater boundingBox].size.height;
+    height = [eater boundingBox].size.height;
     CGRect bite = CGRectMake(location.x - width / 2, location.y - height / 2, width, height);
     
-    int d = ccpDistance(location, eater.position);
     
     // Then find what's going into our mouth.
     NSMutableArray *mouthful = [NSMutableArray array]; 
     [edible enumerateObjectsUsingBlock:^(id s, NSUInteger idx, BOOL *stop) {
+        // TODO might be better to compute these and save them... I'm not sure
+        // if it's better to use CPU or memory.
         int w = [s boundingBox].size.width,
             h = [s boundingBox].size.height;
         CGRect piece = CGRectMake([s position].x - w / 2, [s position].y - h / 2, w, h);
@@ -150,15 +148,20 @@ CCLabelTTF *label;
             [mouthful addObject: s];
         }
     }];
+    
+    return [NSArray arrayWithArray: mouthful];
+}
 
+- (void) chewPieces:(NSArray*) mouthful at: (CGPoint) location {
     ccTime moveDuration = 0.3;
+    int distance = ccpDistance(location, eater.position);
     int points = [mouthful count] * 50;
     
-    // TODO: we should have it do a "chomping" animation if it eats something.
-    NSMutableArray *eaterActions = [NSMutableArray arrayWithObject: [CCMoveTo actionWithDuration: moveDuration position: location]];
+    NSMutableArray *eaterActions = [NSMutableArray arrayWithObject: 
+                                    [CCMoveTo actionWithDuration: moveDuration position: location]];
     if ([mouthful count] > 0) {
         [eaterActions addObject: [CCRotateTo actionWithDuration: 0.02 angle: 20.0]];
-
+        
         NSMutableArray *mouthfulActions = [NSMutableArray arrayWithObject: [CCDelayTime actionWithDuration: moveDuration]];
         [mouthful enumerateObjectsUsingBlock:^(id s, NSUInteger idx, BOOL *stop) {
             // Swing back and forth while we eat it...
@@ -177,7 +180,7 @@ CCLabelTTF *label;
     }
     [eater runAction: [CCSequence actionsWithArray: [NSArray arrayWithArray: eaterActions]]];
     
-    [self runAction: [CCActionTween actionWithDuration: moveDuration key: @"score" from: score to: (score - d + points)]];
+    [self runAction: [CCActionTween actionWithDuration: moveDuration key: @"score" from: score to: (score - distance + points)]];
 }
 
 @end

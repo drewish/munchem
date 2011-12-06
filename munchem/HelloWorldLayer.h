@@ -13,7 +13,6 @@
 // HelloWorldLayer
 @interface HelloWorldLayer : CCLayer
 {
-//    int score;
 }
 
 @property int score;
@@ -22,5 +21,6 @@
 +(CCScene *) scene;
 
 - (void) setupGame;
-
+- (NSArray*) biteAt: (CGPoint) location;
+- (void) chewPieces: (NSArray*) mouthful at: (CGPoint) location;
 @end
